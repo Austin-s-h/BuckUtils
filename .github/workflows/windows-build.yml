@@ -21,17 +21,18 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install uv
           uv pip install --system -e ".[dev]"
 
       - name: Run tests
         run: python -m pytest tests/ -v
 
       - name: Build Windows executable
-        run: python -m pyinstaller buckutils.spec --clean
+        run: python -m PyInstaller buckutils.spec --clean
 
       - name: Upload Windows distributable
         uses: actions/upload-artifact@v4
