@@ -152,7 +152,7 @@ class PDFCombiner:
             messagebox.showerror(
                 "Error",
                 "Page-level combining requires pypdf. "
-                "Install it with 'uv pip install pypdf' and try again.",
+                "Run 'make dev' (uv pip install -e \".[dev]\") to install the dependencies and try again.",
             )
             return False
 
@@ -346,7 +346,8 @@ class BuckUtilsApp:
         if not HAS_PYPDF:
             messagebox.showerror(
                 "Missing PDF Support",
-                "Page previews require pypdf. Install it with 'uv pip install pypdf' and try again.",
+                "Page previews require pypdf. Run 'make dev' (uv pip install -e \".[dev]\") "
+                "to install dependencies and try again.",
             )
             return
 
@@ -406,7 +407,7 @@ class BuckUtilsApp:
 
         self._refresh_page_list()
 
-    def _update_preview(self, event: Optional[tk.Event] = None) -> None:  # type: ignore[type-arg]
+    def _update_preview(self, event: Optional[tk.Event] = None) -> None:
         """Update the preview panel based on the selected page."""
         if not hasattr(self, "preview_text"):
             return
@@ -427,7 +428,7 @@ class BuckUtilsApp:
         self.preview_text.insert(tk.END, page.preview)
         self.preview_text.configure(state=tk.DISABLED)
 
-    def _start_drag(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+    def _start_drag(self, event: tk.Event) -> None:
         """Mark the starting index for drag-and-drop operations."""
         index = self.page_listbox.nearest(event.y)
         if 0 <= index < len(self.pages):
@@ -435,7 +436,7 @@ class BuckUtilsApp:
             self.page_listbox.selection_clear(0, tk.END)
             self.page_listbox.selection_set(index)
 
-    def _on_drag_motion(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+    def _on_drag_motion(self, event: tk.Event) -> None:
         """Handle drag motion to reorder pages."""
         if self._drag_start_index is None:
             return
@@ -455,7 +456,7 @@ class BuckUtilsApp:
         self._drag_start_index = target_index
         self._refresh_page_list(select_index=target_index)
 
-    def _end_drag(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+    def _end_drag(self, event: tk.Event) -> None:
         """End drag operation."""
         self._drag_start_index = None
 
@@ -464,10 +465,12 @@ class BuckUtilsApp:
         self.page_listbox.delete(0, tk.END)
         self.pages.clear()
         for reader in self._open_readers:
-            try:
-                reader.stream.close()  # type: ignore[union-attr]
-            except Exception:
-                pass
+            stream = getattr(reader, "stream", None)
+            if stream:
+                try:
+                    stream.close()
+                except OSError as exc:
+                    print(f"Warning: failed to close PDF stream: {exc}", file=sys.stderr)
         self._open_readers.clear()
         self._drag_start_index = None
         self._update_preview()
