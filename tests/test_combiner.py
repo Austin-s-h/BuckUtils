@@ -9,7 +9,7 @@ from pypdf import PdfReader, PdfWriter
 
 # Mock tkinter for headless testing
 with patch.dict("sys.modules", {"tkinter": MagicMock(), "tkinter.ttk": MagicMock()}):
-    from buckutils.app import PDFCombiner, PDFPage
+    from buckutils.app import PDFCombiner, PDFPage, _generate_preview_for_page
 
 
 class TestPDFCombiner:
@@ -111,6 +111,23 @@ startxref
             assert len(result_reader.pages) == 2
             assert result_reader.pages[0].mediabox.width == reader1.pages[0].mediabox.width
             assert result_reader.pages[1].mediabox.width == reader2.pages[0].mediabox.width
+
+    def test_generate_preview_for_page_returns_metadata(
+        self, sample_pdf_content: bytes
+    ) -> None:
+        """Test that preview generation helper returns preview data."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pdf_path = Path(tmpdir) / "preview.pdf"
+            pdf_path.write_bytes(sample_pdf_content)
+
+            file_path, page_idx, preview_text, preview_image = _generate_preview_for_page(
+                (str(pdf_path), 0, None)
+            )
+
+            assert file_path == str(pdf_path)
+            assert page_idx == 0
+            assert isinstance(preview_text, str)
+            assert preview_image is None
 
 
 class TestImports:

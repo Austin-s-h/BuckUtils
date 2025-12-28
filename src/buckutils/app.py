@@ -10,6 +10,9 @@ import tempfile
 import subprocess
 import sys
 import tkinter as tk
+import logging
+import base64
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -27,6 +30,73 @@ except ImportError:
     PdfReader = None  # type: ignore[assignment]
     PdfWriter = None  # type: ignore[assignment]
     HAS_PYPDF = False
+
+
+logger = logging.getLogger(__name__)
+
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+PREVIEW_LOADING_TEXT = "Generating preview…"
+PROGRESS_BAR_LENGTH = 320
+MAX_PREVIEW_WORKERS = min(4, (os.cpu_count() or 1))
+CUTE_ICON = (
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAKElEQVR4AWOgFf7/fwYk4P///8NQ"
+    "qBGMEIYFGKxgFo2BGIYhaGaAiQYAnxIuOg3r9YsAAAAASUVORK5CYII="
+)
+BG_COLOR = "#f7f2ff"
+ACCENT_COLOR = "#5a4fdc"
+
+
+def _generate_preview_for_page(
+    task: tuple[str, int, Optional[str]]
+) -> tuple[str, int, str, Optional[str]]:
+    """Generate preview text and image for a single page (worker-safe)."""
+    file_path, page_index, gs_path = task
+    preview_text = "No text preview available for this page."
+    preview_image_path: Optional[str] = None
+
+    if PdfReader is None:
+        return file_path, page_index, preview_text, None
+
+    try:
+        reader = PdfReader(file_path)
+        page = reader.pages[page_index]
+        text = ""
+        try:
+            text = page.extract_text() or ""
+        except Exception:
+            text = ""
+        cleaned = " ".join(text.split())
+        if cleaned:
+            preview_text = (cleaned[:240] + "…") if len(cleaned) > 240 else cleaned
+    except Exception:
+        pass
+
+    if gs_path:
+        try:
+            tmp_dir = Path(tempfile.gettempdir())
+            output_path = tmp_dir / f"buckutils_preview_{Path(file_path).stem}_{page_index}.png"
+            cmd = [
+                gs_path,
+                "-dBATCH",
+                "-dNOPAUSE",
+                "-sDEVICE=png16m",
+                "-dSAFER",
+                f"-dFirstPage={page_index + 1}",
+                f"-dLastPage={page_index + 1}",
+                "-r50",
+                f"-sOutputFile={output_path}",
+                file_path,
+            ]
+            run_kwargs = {"capture_output": True, "text": True}
+            if CREATE_NO_WINDOW != 0:
+                run_kwargs["creationflags"] = CREATE_NO_WINDOW
+            result = subprocess.run(cmd, **run_kwargs)
+            if result.returncode == 0 and output_path.exists():
+                preview_image_path = str(output_path)
+        except Exception:
+            preview_image_path = None
+
+    return file_path, page_index, preview_text, preview_image_path
 
 
 @dataclass
@@ -180,13 +250,23 @@ class BuckUtilsApp:
         self.root.title("BuckUtils - PDF Helper")
         self.root.geometry("800x600")
         self.root.minsize(600, 400)
+        self.root.configure(background=BG_COLOR)
 
         # Configure style for larger, more readable UI
         self.style = ttk.Style()
+        try:
+            self.style.theme_use("clam")
+        except tk.TclError:
+            pass
         self.style.configure("Large.TButton", font=("Segoe UI", 14), padding=10)
         self.style.configure("Large.TLabel", font=("Segoe UI", 12))
         self.style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"))
         self.style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"))
+        self.style.configure("Accent.TButton", font=("Segoe UI", 14), padding=10, foreground="white")
+        self.style.configure("Main.TFrame", background=BG_COLOR)
+        self.style.configure("Large.TLabel", background=BG_COLOR)
+        self.style.configure("Title.TLabel", background=BG_COLOR)
+        self.style.configure("Header.TLabel", background=BG_COLOR, foreground=ACCENT_COLOR)
 
         # PDF combiner
         self.combiner = PDFCombiner()
@@ -204,11 +284,11 @@ class BuckUtilsApp:
     def _create_ui(self) -> None:
         """Create the main user interface."""
         # Main container with padding
-        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame = ttk.Frame(self.root, padding="20", style="Main.TFrame")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Title
-        title_label = ttk.Label(main_frame, text="🔧 BuckUtils PDF Helper", style="Title.TLabel")
+        title_label = ttk.Label(main_frame, text="🌸 BuckUtils PDF Helper", style="Title.TLabel")
         title_label.pack(pady=(0, 20))
 
         # Create notebook for tabs
@@ -216,12 +296,12 @@ class BuckUtilsApp:
         notebook.pack(fill=tk.BOTH, expand=True, pady=10)
 
         # Combine PDFs tab
-        combine_frame = ttk.Frame(notebook, padding="20")
+        combine_frame = ttk.Frame(notebook, padding="20", style="Main.TFrame")
         notebook.add(combine_frame, text="  📄 Combine PDFs  ")
         self._create_combine_tab(combine_frame)
 
         # Status bar
-        status_frame = ttk.Frame(main_frame)
+        status_frame = ttk.Frame(main_frame, style="Main.TFrame")
         status_frame.pack(fill=tk.X, pady=(10, 0))
 
         backend = (
@@ -231,6 +311,14 @@ class BuckUtilsApp:
         )
         status_label = ttk.Label(status_frame, text=f"PDF Backend: {backend}", style="Large.TLabel")
         status_label.pack(side=tk.LEFT)
+
+        theme_options = self.style.theme_names()
+        self.theme_var = tk.StringVar(value=self.style.theme_use())
+        theme_select = ttk.Combobox(
+            status_frame, values=theme_options, textvariable=self.theme_var, width=12, state="readonly"
+        )
+        theme_select.pack(side=tk.RIGHT, padx=(0, 8))
+        theme_select.bind("<<ComboboxSelected>>", self._on_theme_change)
 
     def _create_combine_tab(self, parent: ttk.Frame) -> None:
         """Create the Combine PDFs tab."""
@@ -327,7 +415,10 @@ class BuckUtilsApp:
 
         # Combine button (prominent)
         combine_btn = ttk.Button(
-            parent, text="🔗 COMBINE PDFs", style="Large.TButton", command=self._combine_pdfs
+            parent,
+            text="🔗 COMBINE PDFs",
+            style="Accent.TButton",
+            command=self._combine_pdfs,
         )
         combine_btn.pack(pady=20, ipadx=30, ipady=10)
 
@@ -366,6 +457,8 @@ class BuckUtilsApp:
 
         self._open_readers.append(reader)
         existing = {(page.source_path, page.page_index) for page in self.pages}
+        tasks: list[tuple[str, int, Optional[str]]] = []
+        gs_path = self.combiner.find_ghostscript()
 
         for idx, page in enumerate(reader.pages):
             key = (file_path, idx)
@@ -373,11 +466,13 @@ class BuckUtilsApp:
                 continue
 
             label = f"{Path(file_path).name} - Page {idx + 1}"
-            preview = self._build_preview_text(page)
-            preview_image = self._render_preview_image(file_path, idx)
-            if preview_image:
-                self._preview_files.append(preview_image)
-            self.pages.append(PDFPage(file_path, idx, label, page, preview, preview_image))
+            self.pages.append(
+                PDFPage(file_path, idx, label, page, PREVIEW_LOADING_TEXT, None)
+            )
+            tasks.append((file_path, idx, gs_path))
+
+        if tasks:
+            self._generate_previews_in_background(tasks)
 
     def _build_preview_text(self, page: "PageObject") -> str:
         """Create a short text preview for a page."""
@@ -392,6 +487,74 @@ class BuckUtilsApp:
             return "No text preview available for this page."
 
         return (cleaned[:240] + "…") if len(cleaned) > 240 else cleaned
+
+    def _generate_previews_in_background(self, tasks: list[tuple[str, int, Optional[str]]]) -> None:
+        """Generate previews using multiprocessing while showing a progress bar."""
+        if not tasks:
+            return
+
+        progress_win = tk.Toplevel(self.root)
+        progress_win.title("Generating previews…")
+        progress_win.resizable(False, False)
+        progress_win.transient(self.root)
+        progress_win.grab_set()
+
+        ttk.Label(progress_win, text="Generating page previews…", padding=10).pack(
+            fill=tk.X, padx=10, pady=(10, 0)
+        )
+        progress = ttk.Progressbar(
+            progress_win, mode="determinate", maximum=len(tasks), length=PROGRESS_BAR_LENGTH
+        )
+        progress.pack(fill=tk.X, padx=12, pady=(0, 12))
+        progress_win.update_idletasks()
+
+        try:
+            with ProcessPoolExecutor(max_workers=MAX_PREVIEW_WORKERS) as executor:
+                futures = {
+                    executor.submit(_generate_preview_for_page, task): task for task in tasks
+                }
+                completed = 0
+                for future in as_completed(futures):
+                    task = futures[future]
+                    try:
+                        file_path, page_index, preview_text, preview_image_path = future.result()
+                    except Exception as exc:
+                        source_path, source_index, _ = task
+                        logger.exception(
+                            "Preview generation failed for %s (page %s)", source_path, source_index
+                        )
+                        continue
+                    self._apply_preview_result(
+                        file_path, page_index, preview_text, preview_image_path
+                    )
+                    completed += 1
+                    progress["value"] = completed
+                    progress_win.update_idletasks()
+        finally:
+            progress_win.grab_release()
+            progress_win.destroy()
+        # The modal progress window blocks other interactions while previews generate.
+        self._update_preview()
+
+    def _apply_preview_result(
+        self, file_path: str, page_index: int, preview: str, preview_image_path: Optional[str]
+    ) -> None:
+        """Update stored page previews after background generation completes."""
+        for page in self.pages:
+            if page.source_path == file_path and page.page_index == page_index:
+                page.preview = preview
+                page.preview_image_path = preview_image_path
+                if preview_image_path:
+                    self._preview_files.append(preview_image_path)
+                break
+
+    def _on_theme_change(self, event: tk.Event) -> None:
+        """Handle theme selection changes."""
+        new_theme = self.theme_var.get()
+        try:
+            self.style.theme_use(new_theme)
+        except tk.TclError:
+            messagebox.showwarning("Theme", f"Unable to apply theme '{new_theme}'.")
 
     def _render_preview_image(self, file_path: str, page_index: int) -> Optional[str]:
         """Render a low-resolution preview image for a PDF page using Ghostscript."""
@@ -408,13 +571,16 @@ class BuckUtilsApp:
                 "-dNOPAUSE",
                 "-sDEVICE=png16m",
                 "-dSAFER",
-                "-dFirstPage={}".format(page_index + 1),
-                "-dLastPage={}".format(page_index + 1),
+                f"-dFirstPage={page_index + 1}",
+                f"-dLastPage={page_index + 1}",
                 "-r50",
                 f"-sOutputFile={output_path}",
                 file_path,
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            run_kwargs = {"capture_output": True, "text": True}
+            if CREATE_NO_WINDOW != 0:
+                run_kwargs["creationflags"] = CREATE_NO_WINDOW
+            result = subprocess.run(cmd, **run_kwargs)
             if result.returncode != 0:
                 return None
             if output_path.exists():
@@ -598,6 +764,10 @@ def main() -> None:
         # For Windows, try to set icon
         if sys.platform == "win32":
             root.iconbitmap("icon.ico")
+        if sys.platform.startswith(("win32", "darwin", "linux")):
+            cute_icon = tk.PhotoImage(data=CUTE_ICON)
+            root._cute_icon = cute_icon  # type: ignore[attr-defined]
+            root.iconphoto(False, cute_icon)
     except Exception:
         pass
 
