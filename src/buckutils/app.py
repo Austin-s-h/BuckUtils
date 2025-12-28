@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tkinter as tk
 import logging
+import base64
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +38,12 @@ CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PREVIEW_LOADING_TEXT = "Generating preview…"
 PROGRESS_BAR_LENGTH = 320
 MAX_PREVIEW_WORKERS = min(4, (os.cpu_count() or 1))
+CUTE_ICON = (
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAKElEQVR4AWOgFf7/fwYk4P///8NQ"
+    "qBGMEIYFGKxgFo2BGIYhaGaAiQYAnxIuOg3r9YsAAAAASUVORK5CYII="
+)
+BG_COLOR = "#f7f2ff"
+ACCENT_COLOR = "#5a4fdc"
 
 
 def _generate_preview_for_page(
@@ -243,13 +250,23 @@ class BuckUtilsApp:
         self.root.title("BuckUtils - PDF Helper")
         self.root.geometry("800x600")
         self.root.minsize(600, 400)
+        self.root.configure(background=BG_COLOR)
 
         # Configure style for larger, more readable UI
         self.style = ttk.Style()
+        try:
+            self.style.theme_use("clam")
+        except tk.TclError:
+            pass
         self.style.configure("Large.TButton", font=("Segoe UI", 14), padding=10)
         self.style.configure("Large.TLabel", font=("Segoe UI", 12))
         self.style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"))
         self.style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"))
+        self.style.configure("Accent.TButton", font=("Segoe UI", 14), padding=10, foreground="white")
+        self.style.configure("Main.TFrame", background=BG_COLOR)
+        self.style.configure("Large.TLabel", background=BG_COLOR)
+        self.style.configure("Title.TLabel", background=BG_COLOR)
+        self.style.configure("Header.TLabel", background=BG_COLOR, foreground=ACCENT_COLOR)
 
         # PDF combiner
         self.combiner = PDFCombiner()
@@ -267,11 +284,11 @@ class BuckUtilsApp:
     def _create_ui(self) -> None:
         """Create the main user interface."""
         # Main container with padding
-        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame = ttk.Frame(self.root, padding="20", style="Main.TFrame")
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Title
-        title_label = ttk.Label(main_frame, text="🔧 BuckUtils PDF Helper", style="Title.TLabel")
+        title_label = ttk.Label(main_frame, text="🌸 BuckUtils PDF Helper", style="Title.TLabel")
         title_label.pack(pady=(0, 20))
 
         # Create notebook for tabs
@@ -279,12 +296,12 @@ class BuckUtilsApp:
         notebook.pack(fill=tk.BOTH, expand=True, pady=10)
 
         # Combine PDFs tab
-        combine_frame = ttk.Frame(notebook, padding="20")
+        combine_frame = ttk.Frame(notebook, padding="20", style="Main.TFrame")
         notebook.add(combine_frame, text="  📄 Combine PDFs  ")
         self._create_combine_tab(combine_frame)
 
         # Status bar
-        status_frame = ttk.Frame(main_frame)
+        status_frame = ttk.Frame(main_frame, style="Main.TFrame")
         status_frame.pack(fill=tk.X, pady=(10, 0))
 
         backend = (
@@ -294,6 +311,14 @@ class BuckUtilsApp:
         )
         status_label = ttk.Label(status_frame, text=f"PDF Backend: {backend}", style="Large.TLabel")
         status_label.pack(side=tk.LEFT)
+
+        theme_options = self.style.theme_names()
+        self.theme_var = tk.StringVar(value=self.style.theme_use())
+        theme_select = ttk.Combobox(
+            status_frame, values=theme_options, textvariable=self.theme_var, width=12, state="readonly"
+        )
+        theme_select.pack(side=tk.RIGHT, padx=(0, 8))
+        theme_select.bind("<<ComboboxSelected>>", self._on_theme_change)
 
     def _create_combine_tab(self, parent: ttk.Frame) -> None:
         """Create the Combine PDFs tab."""
@@ -390,7 +415,10 @@ class BuckUtilsApp:
 
         # Combine button (prominent)
         combine_btn = ttk.Button(
-            parent, text="🔗 COMBINE PDFs", style="Large.TButton", command=self._combine_pdfs
+            parent,
+            text="🔗 COMBINE PDFs",
+            style="Accent.TButton",
+            command=self._combine_pdfs,
         )
         combine_btn.pack(pady=20, ipadx=30, ipady=10)
 
@@ -519,6 +547,14 @@ class BuckUtilsApp:
                 if preview_image_path:
                     self._preview_files.append(preview_image_path)
                 break
+
+    def _on_theme_change(self, event: tk.Event) -> None:
+        """Handle theme selection changes."""
+        new_theme = self.theme_var.get()
+        try:
+            self.style.theme_use(new_theme)
+        except tk.TclError:
+            messagebox.showwarning("Theme", f"Unable to apply theme '{new_theme}'.")
 
     def _render_preview_image(self, file_path: str, page_index: int) -> Optional[str]:
         """Render a low-resolution preview image for a PDF page using Ghostscript."""
@@ -728,6 +764,10 @@ def main() -> None:
         # For Windows, try to set icon
         if sys.platform == "win32":
             root.iconbitmap("icon.ico")
+        if sys.platform.startswith(("win32", "darwin", "linux")):
+            cute_icon = tk.PhotoImage(data=CUTE_ICON)
+            root._cute_icon = cute_icon  # type: ignore[attr-defined]
+            root.iconphoto(False, cute_icon)
     except Exception:
         pass
 
