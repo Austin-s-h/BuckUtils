@@ -31,6 +31,7 @@ except ImportError:
 
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+PREVIEW_LOADING_TEXT = "Generating preview…"
 
 
 def _generate_preview_for_page(
@@ -430,7 +431,7 @@ class BuckUtilsApp:
 
             label = f"{Path(file_path).name} - Page {idx + 1}"
             self.pages.append(
-                PDFPage(file_path, idx, label, page, "Generating preview…", None)
+                PDFPage(file_path, idx, label, page, PREVIEW_LOADING_TEXT, None)
             )
             tasks.append((file_path, idx, gs_path))
 
@@ -478,7 +479,8 @@ class BuckUtilsApp:
                 for future in as_completed(futures):
                     try:
                         file_path, page_index, preview_text, preview_image_path = future.result()
-                    except Exception:
+                    except Exception as exc:
+                        print(f"Preview generation failed: {exc}", file=sys.stderr)
                         continue
                     self._apply_preview_result(
                         file_path, page_index, preview_text, preview_image_path
