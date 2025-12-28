@@ -6,6 +6,7 @@ Designed to be grandpa-friendly with a clear, easy-to-use interface.
 
 import os
 import shutil
+import tempfile
 import subprocess
 import sys
 import tkinter as tk
@@ -37,6 +38,7 @@ class PDFPage:
     label: str
     page: "PageObject"
     preview: str
+    preview_image_path: Optional[str] = None
 
 
 class PDFCombiner:
@@ -193,6 +195,8 @@ class BuckUtilsApp:
         self.pages: list[PDFPage] = []
         self._open_readers: list[PdfReader] = []
         self._drag_start_index: Optional[int] = None
+        self._preview_files: list[str] = []
+        self._current_photo: Optional[tk.PhotoImage] = None
 
         # Create main UI
         self._create_ui()
@@ -309,6 +313,9 @@ class BuckUtilsApp:
         )
         preview_title.pack(anchor=tk.W, pady=(0, 5))
 
+        self.preview_image_label = ttk.Label(preview_frame)
+        self.preview_image_label.pack(anchor=tk.CENTER, pady=(0, 8))
+
         self.preview_text = tk.Text(
             preview_frame,
             height=6,
@@ -367,7 +374,10 @@ class BuckUtilsApp:
 
             label = f"{Path(file_path).name} - Page {idx + 1}"
             preview = self._build_preview_text(page)
-            self.pages.append(PDFPage(file_path, idx, label, page, preview))
+            preview_image = self._render_preview_image(file_path, idx)
+            if preview_image:
+                self._preview_files.append(preview_image)
+            self.pages.append(PDFPage(file_path, idx, label, page, preview, preview_image))
 
     def _build_preview_text(self, page: "PageObject") -> str:
         """Create a short text preview for a page."""
@@ -382,6 +392,36 @@ class BuckUtilsApp:
             return "No text preview available for this page."
 
         return (cleaned[:240] + "…") if len(cleaned) > 240 else cleaned
+
+    def _render_preview_image(self, file_path: str, page_index: int) -> Optional[str]:
+        """Render a low-resolution preview image for a PDF page using Ghostscript."""
+        gs_path = self.combiner.find_ghostscript()
+        if not gs_path:
+            return None
+
+        try:
+            tmp_dir = Path(tempfile.gettempdir())
+            output_path = tmp_dir / f"buckutils_preview_{Path(file_path).stem}_{page_index}.png"
+            cmd = [
+                gs_path,
+                "-dBATCH",
+                "-dNOPAUSE",
+                "-sDEVICE=png16m",
+                "-dSAFER",
+                "-dFirstPage={}".format(page_index + 1),
+                "-dLastPage={}".format(page_index + 1),
+                "-r50",
+                f"-sOutputFile={output_path}",
+                file_path,
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                return None
+            if output_path.exists():
+                return str(output_path)
+        except Exception:
+            return None
+        return None
 
     def _refresh_page_list(self, select_index: Optional[int] = None) -> None:
         """Refresh the listbox to reflect the current page order."""
@@ -423,6 +463,12 @@ class BuckUtilsApp:
 
         page = self.pages[selection[0]]
         self.preview_title_var.set(page.label)
+        if page.preview_image_path and Path(page.preview_image_path).exists():
+            self._current_photo = tk.PhotoImage(file=page.preview_image_path)
+            self.preview_image_label.configure(image=self._current_photo)
+        else:
+            self._current_photo = None
+            self.preview_image_label.configure(image="")
         self.preview_text.configure(state=tk.NORMAL)
         self.preview_text.delete("1.0", tk.END)
         self.preview_text.insert(tk.END, page.preview)
@@ -473,6 +519,12 @@ class BuckUtilsApp:
                     print(f"Warning: failed to close PDF stream: {exc}", file=sys.stderr)
         self._open_readers.clear()
         self._drag_start_index = None
+        for preview in self._preview_files:
+            try:
+                Path(preview).unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._preview_files.clear()
         self._update_preview()
 
     def _move_up(self) -> None:
