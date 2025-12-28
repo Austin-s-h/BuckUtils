@@ -10,6 +10,7 @@ import tempfile
 import subprocess
 import sys
 import tkinter as tk
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -27,6 +28,59 @@ except ImportError:
     PdfReader = None  # type: ignore[assignment]
     PdfWriter = None  # type: ignore[assignment]
     HAS_PYPDF = False
+
+
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _generate_preview_for_page(
+    task: tuple[str, int, Optional[str]]
+) -> tuple[str, int, str, Optional[str]]:
+    """Generate preview text and image for a single page (worker-safe)."""
+    file_path, page_index, gs_path = task
+    preview_text = "No text preview available for this page."
+    preview_image_path: Optional[str] = None
+
+    try:
+        reader = PdfReader(file_path)
+        page = reader.pages[page_index]
+        text = ""
+        try:
+            text = page.extract_text() or ""
+        except Exception:
+            text = ""
+        cleaned = " ".join(text.split())
+        if cleaned:
+            preview_text = (cleaned[:240] + "…") if len(cleaned) > 240 else cleaned
+    except Exception:
+        pass
+
+    if gs_path:
+        try:
+            tmp_dir = Path(tempfile.gettempdir())
+            output_path = tmp_dir / f"buckutils_preview_{Path(file_path).stem}_{page_index}.png"
+            cmd = [
+                gs_path,
+                "-dBATCH",
+                "-dNOPAUSE",
+                "-sDEVICE=png16m",
+                "-dSAFER",
+                f"-dFirstPage={page_index + 1}",
+                f"-dLastPage={page_index + 1}",
+                "-r50",
+                f"-sOutputFile={output_path}",
+                file_path,
+            ]
+            run_kwargs = {"capture_output": True, "text": True}
+            if CREATE_NO_WINDOW:
+                run_kwargs["creationflags"] = CREATE_NO_WINDOW
+            result = subprocess.run(cmd, **run_kwargs)
+            if result.returncode == 0 and output_path.exists():
+                preview_image_path = str(output_path)
+        except Exception:
+            preview_image_path = None
+
+    return file_path, page_index, preview_text, preview_image_path
 
 
 @dataclass
@@ -366,6 +420,8 @@ class BuckUtilsApp:
 
         self._open_readers.append(reader)
         existing = {(page.source_path, page.page_index) for page in self.pages}
+        tasks: list[tuple[str, int, Optional[str]]] = []
+        gs_path = self.combiner.find_ghostscript()
 
         for idx, page in enumerate(reader.pages):
             key = (file_path, idx)
@@ -373,11 +429,13 @@ class BuckUtilsApp:
                 continue
 
             label = f"{Path(file_path).name} - Page {idx + 1}"
-            preview = self._build_preview_text(page)
-            preview_image = self._render_preview_image(file_path, idx)
-            if preview_image:
-                self._preview_files.append(preview_image)
-            self.pages.append(PDFPage(file_path, idx, label, page, preview, preview_image))
+            self.pages.append(
+                PDFPage(file_path, idx, label, page, "Generating preview…", None)
+            )
+            tasks.append((file_path, idx, gs_path))
+
+        if tasks:
+            self._generate_previews_in_background(tasks)
 
     def _build_preview_text(self, page: "PageObject") -> str:
         """Create a short text preview for a page."""
@@ -392,6 +450,58 @@ class BuckUtilsApp:
             return "No text preview available for this page."
 
         return (cleaned[:240] + "…") if len(cleaned) > 240 else cleaned
+
+    def _generate_previews_in_background(self, tasks: list[tuple[str, int, Optional[str]]]) -> None:
+        """Generate previews using multiprocessing while showing a progress bar."""
+        if not tasks:
+            return
+
+        progress_win = tk.Toplevel(self.root)
+        progress_win.title("Generating previews…")
+        progress_win.resizable(False, False)
+        progress_win.transient(self.root)
+        progress_win.grab_set()
+
+        ttk.Label(progress_win, text="Generating page previews…", padding=10).pack(
+            fill=tk.X, padx=10, pady=(10, 0)
+        )
+        progress = ttk.Progressbar(
+            progress_win, mode="determinate", maximum=len(tasks), length=320
+        )
+        progress.pack(fill=tk.X, padx=12, pady=(0, 12))
+        progress_win.update_idletasks()
+
+        try:
+            with ProcessPoolExecutor() as executor:
+                futures = [executor.submit(_generate_preview_for_page, task) for task in tasks]
+                completed = 0
+                for future in as_completed(futures):
+                    try:
+                        file_path, page_index, preview_text, preview_image_path = future.result()
+                    except Exception:
+                        continue
+                    self._apply_preview_result(
+                        file_path, page_index, preview_text, preview_image_path
+                    )
+                    completed += 1
+                    progress["value"] = completed
+                    progress_win.update_idletasks()
+        finally:
+            progress_win.grab_release()
+            progress_win.destroy()
+        self._update_preview()
+
+    def _apply_preview_result(
+        self, file_path: str, page_index: int, preview: str, preview_image_path: Optional[str]
+    ) -> None:
+        """Update stored page previews after background generation completes."""
+        for page in self.pages:
+            if page.source_path == file_path and page.page_index == page_index:
+                page.preview = preview
+                page.preview_image_path = preview_image_path
+                if preview_image_path:
+                    self._preview_files.append(preview_image_path)
+                break
 
     def _render_preview_image(self, file_path: str, page_index: int) -> Optional[str]:
         """Render a low-resolution preview image for a PDF page using Ghostscript."""
@@ -414,7 +524,10 @@ class BuckUtilsApp:
                 f"-sOutputFile={output_path}",
                 file_path,
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            run_kwargs = {"capture_output": True, "text": True}
+            if CREATE_NO_WINDOW:
+                run_kwargs["creationflags"] = CREATE_NO_WINDOW
+            result = subprocess.run(cmd, **run_kwargs)
             if result.returncode != 0:
                 return None
             if output_path.exists():
