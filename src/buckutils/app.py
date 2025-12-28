@@ -491,8 +491,9 @@ class BuckUtilsApp:
                     try:
                         file_path, page_index, preview_text, preview_image_path = future.result()
                     except Exception as exc:
+                        source_path, source_index, _ = task
                         logger.exception(
-                            "Preview generation failed for %s (page %s)", task[0], task[1]
+                            "Preview generation failed for %s (page %s)", source_path, source_index
                         )
                         continue
                     self._apply_preview_result(
@@ -504,6 +505,7 @@ class BuckUtilsApp:
         finally:
             progress_win.grab_release()
             progress_win.destroy()
+        # The modal progress window blocks other interactions while previews generate.
         self._update_preview()
 
     def _apply_preview_result(
@@ -533,8 +535,8 @@ class BuckUtilsApp:
                 "-dNOPAUSE",
                 "-sDEVICE=png16m",
                 "-dSAFER",
-                "-dFirstPage={}".format(page_index + 1),
-                "-dLastPage={}".format(page_index + 1),
+                f"-dFirstPage={page_index + 1}",
+                f"-dLastPage={page_index + 1}",
                 "-r50",
                 f"-sOutputFile={output_path}",
                 file_path,
