@@ -10,6 +10,7 @@ import tempfile
 import subprocess
 import sys
 import tkinter as tk
+import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,8 +31,12 @@ except ImportError:
     HAS_PYPDF = False
 
 
+logger = logging.getLogger(__name__)
+
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 PREVIEW_LOADING_TEXT = "Generating preview…"
+PROGRESS_BAR_LENGTH = 320
+MAX_PREVIEW_WORKERS = min(4, (os.cpu_count() or 1))
 
 
 def _generate_preview_for_page(
@@ -76,7 +81,7 @@ def _generate_preview_for_page(
                 file_path,
             ]
             run_kwargs = {"capture_output": True, "text": True}
-            if CREATE_NO_WINDOW:
+            if CREATE_NO_WINDOW != 0:
                 run_kwargs["creationflags"] = CREATE_NO_WINDOW
             result = subprocess.run(cmd, **run_kwargs)
             if result.returncode == 0 and output_path.exists():
@@ -470,20 +475,25 @@ class BuckUtilsApp:
             fill=tk.X, padx=10, pady=(10, 0)
         )
         progress = ttk.Progressbar(
-            progress_win, mode="determinate", maximum=len(tasks), length=320
+            progress_win, mode="determinate", maximum=len(tasks), length=PROGRESS_BAR_LENGTH
         )
         progress.pack(fill=tk.X, padx=12, pady=(0, 12))
         progress_win.update_idletasks()
 
         try:
-            with ProcessPoolExecutor(max_workers=min(4, (os.cpu_count() or 1))) as executor:
-                futures = [executor.submit(_generate_preview_for_page, task) for task in tasks]
+            with ProcessPoolExecutor(max_workers=MAX_PREVIEW_WORKERS) as executor:
+                futures = {
+                    executor.submit(_generate_preview_for_page, task): task for task in tasks
+                }
                 completed = 0
                 for future in as_completed(futures):
+                    task = futures[future]
                     try:
                         file_path, page_index, preview_text, preview_image_path = future.result()
                     except Exception as exc:
-                        print(f"Preview generation failed: {exc}", file=sys.stderr)
+                        logger.exception(
+                            "Preview generation failed for %s (page %s)", task[0], task[1]
+                        )
                         continue
                     self._apply_preview_result(
                         file_path, page_index, preview_text, preview_image_path
@@ -530,7 +540,7 @@ class BuckUtilsApp:
                 file_path,
             ]
             run_kwargs = {"capture_output": True, "text": True}
-            if CREATE_NO_WINDOW:
+            if CREATE_NO_WINDOW != 0:
                 run_kwargs["creationflags"] = CREATE_NO_WINDOW
             result = subprocess.run(cmd, **run_kwargs)
             if result.returncode != 0:
