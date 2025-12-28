@@ -42,6 +42,9 @@ def _generate_preview_for_page(
     preview_text = "No text preview available for this page."
     preview_image_path: Optional[str] = None
 
+    if PdfReader is None:
+        return file_path, page_index, preview_text, None
+
     try:
         reader = PdfReader(file_path)
         page = reader.pages[page_index]
@@ -473,7 +476,7 @@ class BuckUtilsApp:
         progress_win.update_idletasks()
 
         try:
-            with ProcessPoolExecutor() as executor:
+            with ProcessPoolExecutor(max_workers=min(4, (os.cpu_count() or 1))) as executor:
                 futures = [executor.submit(_generate_preview_for_page, task) for task in tasks]
                 completed = 0
                 for future in as_completed(futures):
