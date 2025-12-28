@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BuckUtils - A simple PDF utility for combining and renaming PDF files.
+BuckUtils - A simple PDF utility for combining PDF files with page-level control.
 Designed to be grandpa-friendly with a clear, easy-to-use interface.
 """
 
@@ -9,9 +9,13 @@ import shutil
 import subprocess
 import sys
 import tkinter as tk
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover - used for type checking only
+    from pypdf import PageObject
 
 # Try to import pypdf, fall back to Ghostscript if not available
 try:
@@ -19,7 +23,20 @@ try:
 
     HAS_PYPDF = True
 except ImportError:
+    PdfReader = None  # type: ignore[assignment]
+    PdfWriter = None  # type: ignore[assignment]
     HAS_PYPDF = False
+
+
+@dataclass
+class PDFPage:
+    """Represents a single PDF page with preview metadata."""
+
+    source_path: str
+    page_index: int
+    label: str
+    page: "PageObject"
+    preview: str
 
 
 class PDFCombiner:
@@ -125,6 +142,33 @@ class PDFCombiner:
         )
         return False
 
+    def combine_pages(self, pages: list[PDFPage], output_file: str) -> bool:
+        """Combine individual pages into a single PDF in the given order."""
+        if not pages:
+            messagebox.showwarning("Warning", "No pages selected to combine!")
+            return False
+
+        if not HAS_PYPDF:
+            messagebox.showerror(
+                "Error",
+                "Page-level combining requires pypdf. "
+                "Install it with 'uv pip install pypdf' and try again.",
+            )
+            return False
+
+        try:
+            writer = PdfWriter()
+            for page in pages:
+                writer.add_page(page.page)
+
+            with Path(output_file).open("wb") as output:
+                writer.write(output)
+
+            return True
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to combine pages: {e!s}")
+            return False
+
 
 class BuckUtilsApp:
     """Main application class for BuckUtils PDF utility."""
@@ -145,8 +189,10 @@ class BuckUtilsApp:
         # PDF combiner
         self.combiner = PDFCombiner()
 
-        # File list for combining
-        self.pdf_files: list[str] = []
+        # Page list for combining
+        self.pages: list[PDFPage] = []
+        self._open_readers: list[PdfReader] = []
+        self._drag_start_index: Optional[int] = None
 
         # Create main UI
         self._create_ui()
@@ -170,11 +216,6 @@ class BuckUtilsApp:
         notebook.add(combine_frame, text="  📄 Combine PDFs  ")
         self._create_combine_tab(combine_frame)
 
-        # Rename PDFs tab
-        rename_frame = ttk.Frame(notebook, padding="20")
-        notebook.add(rename_frame, text="  ✏️ Rename PDF  ")
-        self._create_rename_tab(rename_frame)
-
         # Status bar
         status_frame = ttk.Frame(main_frame)
         status_frame.pack(fill=tk.X, pady=(10, 0))
@@ -192,7 +233,10 @@ class BuckUtilsApp:
         # Instructions
         instructions = ttk.Label(
             parent,
-            text="Add PDF files below, arrange them in order, then click 'Combine'.",
+            text=(
+                "Add PDF files to import every page, then drag-and-drop or use the buttons "
+                "below to reorder pages across files. Click 'Combine' to export the final PDF."
+            ),
             style="Large.TLabel",
             wraplength=600,
         )
@@ -227,15 +271,19 @@ class BuckUtilsApp:
         scrollbar = ttk.Scrollbar(list_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.file_listbox = tk.Listbox(
+        self.page_listbox = tk.Listbox(
             list_frame,
             font=("Segoe UI", 12),
             selectmode=tk.EXTENDED,
             yscrollcommand=scrollbar.set,
             height=10,
         )
-        self.file_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.file_listbox.yview)
+        self.page_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.page_listbox.yview)
+        self.page_listbox.bind("<<ListboxSelect>>", self._update_preview)
+        self.page_listbox.bind("<Button-1>", self._start_drag)
+        self.page_listbox.bind("<B1-Motion>", self._on_drag_motion)
+        self.page_listbox.bind("<ButtonRelease-1>", self._end_drag)
 
         # Move buttons frame
         move_frame = ttk.Frame(parent)
@@ -251,133 +299,209 @@ class BuckUtilsApp:
         )
         move_down_btn.pack(side=tk.LEFT)
 
+        # Preview frame
+        preview_frame = ttk.LabelFrame(parent, text="Page Preview", padding="10")
+        preview_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 10))
+
+        self.preview_title_var = tk.StringVar(value="Select a page to preview")
+        preview_title = ttk.Label(
+            preview_frame, textvariable=self.preview_title_var, style="Header.TLabel"
+        )
+        preview_title.pack(anchor=tk.W, pady=(0, 5))
+
+        self.preview_text = tk.Text(
+            preview_frame,
+            height=6,
+            wrap=tk.WORD,
+            font=("Segoe UI", 11),
+            state=tk.DISABLED,
+        )
+        self.preview_text.pack(fill=tk.BOTH, expand=True)
+
         # Combine button (prominent)
         combine_btn = ttk.Button(
             parent, text="🔗 COMBINE PDFs", style="Large.TButton", command=self._combine_pdfs
         )
         combine_btn.pack(pady=20, ipadx=30, ipady=10)
 
-    def _create_rename_tab(self, parent: ttk.Frame) -> None:
-        """Create the Rename PDF tab."""
-        # Instructions
-        instructions = ttk.Label(
-            parent,
-            text="Select a PDF file and give it a new name.",
-            style="Large.TLabel",
-            wraplength=600,
-        )
-        instructions.pack(pady=(0, 20))
-
-        # Current file selection
-        file_frame = ttk.Frame(parent)
-        file_frame.pack(fill=tk.X, pady=10)
-
-        file_label = ttk.Label(file_frame, text="Current File:", style="Header.TLabel")
-        file_label.pack(anchor=tk.W)
-
-        self.current_file_var = tk.StringVar()
-        self.current_file_entry = ttk.Entry(
-            file_frame, textvariable=self.current_file_var, font=("Segoe UI", 12), state="readonly"
-        )
-        self.current_file_entry.pack(fill=tk.X, pady=(5, 10))
-
-        browse_btn = ttk.Button(
-            file_frame,
-            text="📂 Browse for PDF...",
-            style="Large.TButton",
-            command=self._browse_rename_file,
-        )
-        browse_btn.pack(anchor=tk.W)
-
-        # New name entry
-        name_frame = ttk.Frame(parent)
-        name_frame.pack(fill=tk.X, pady=20)
-
-        name_label = ttk.Label(name_frame, text="New Name (without .pdf):", style="Header.TLabel")
-        name_label.pack(anchor=tk.W)
-
-        self.new_name_var = tk.StringVar()
-        self.new_name_entry = ttk.Entry(
-            name_frame, textvariable=self.new_name_var, font=("Segoe UI", 14)
-        )
-        self.new_name_entry.pack(fill=tk.X, pady=(5, 0), ipady=5)
-
-        # Rename button
-        rename_btn = ttk.Button(
-            parent, text="✏️ RENAME FILE", style="Large.TButton", command=self._rename_file
-        )
-        rename_btn.pack(pady=20, ipadx=30, ipady=10)
-
     # ========== Combine Tab Methods ==========
 
     def _add_files(self) -> None:
-        """Add PDF files to the combine list."""
+        """Add PDF files and import their pages."""
         files = filedialog.askopenfilenames(
             title="Select PDF Files to Combine",
             filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")],
         )
 
-        for f in files:
-            if f not in self.pdf_files:
-                self.pdf_files.append(f)
-                self.file_listbox.insert(tk.END, Path(f).name)
+        if not files:
+            return
+
+        for file_path in files:
+            self._import_pdf_pages(file_path)
+
+        self._refresh_page_list()
+
+    def _import_pdf_pages(self, file_path: str) -> None:
+        """Load pages from a PDF file into the working list."""
+        if not HAS_PYPDF:
+            messagebox.showerror(
+                "Missing PDF Support",
+                "Page previews require pypdf. Install it with 'uv pip install pypdf' and try again.",
+            )
+            return
+
+        try:
+            reader = PdfReader(file_path)
+        except Exception as exc:  # pragma: no cover - pypdf will raise its own errors
+            messagebox.showerror("Error", f"Unable to open {Path(file_path).name}: {exc!s}")
+            return
+
+        self._open_readers.append(reader)
+        existing = {(page.source_path, page.page_index) for page in self.pages}
+
+        for idx, page in enumerate(reader.pages):
+            key = (file_path, idx)
+            if key in existing:
+                continue
+
+            label = f"{Path(file_path).name} - Page {idx + 1}"
+            preview = self._build_preview_text(page)
+            self.pages.append(PDFPage(file_path, idx, label, page, preview))
+
+    def _build_preview_text(self, page: "PageObject") -> str:
+        """Create a short text preview for a page."""
+        text = ""
+        try:
+            text = page.extract_text() or ""
+        except Exception:
+            text = ""
+
+        cleaned = " ".join(text.split())
+        if not cleaned:
+            return "No text preview available for this page."
+
+        return (cleaned[:240] + "…") if len(cleaned) > 240 else cleaned
+
+    def _refresh_page_list(self, select_index: Optional[int] = None) -> None:
+        """Refresh the listbox to reflect the current page order."""
+        self.page_listbox.delete(0, tk.END)
+        for page in self.pages:
+            self.page_listbox.insert(tk.END, page.label)
+
+        if select_index is None and self.pages:
+            select_index = 0
+
+        if select_index is not None and 0 <= select_index < len(self.pages):
+            self.page_listbox.selection_set(select_index)
+            self.page_listbox.activate(select_index)
+        self._update_preview()
 
     def _remove_selected(self) -> None:
-        """Remove selected files from the list."""
-        selected = list(self.file_listbox.curselection())
+        """Remove selected pages from the list."""
+        selected = list(self.page_listbox.curselection())
         selected.reverse()  # Remove from end to avoid index shifting
 
         for idx in selected:
-            self.file_listbox.delete(idx)
-            del self.pdf_files[idx]
+            del self.pages[idx]
+
+        self._refresh_page_list()
+
+    def _update_preview(self, event: Optional[tk.Event] = None) -> None:  # type: ignore[type-arg]
+        """Update the preview panel based on the selected page."""
+        if not hasattr(self, "preview_text"):
+            return
+
+        selection = self.page_listbox.curselection()
+        if not selection:
+            self.preview_title_var.set("Select a page to preview")
+            self.preview_text.configure(state=tk.NORMAL)
+            self.preview_text.delete("1.0", tk.END)
+            self.preview_text.insert(tk.END, "No page selected.")
+            self.preview_text.configure(state=tk.DISABLED)
+            return
+
+        page = self.pages[selection[0]]
+        self.preview_title_var.set(page.label)
+        self.preview_text.configure(state=tk.NORMAL)
+        self.preview_text.delete("1.0", tk.END)
+        self.preview_text.insert(tk.END, page.preview)
+        self.preview_text.configure(state=tk.DISABLED)
+
+    def _start_drag(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+        """Mark the starting index for drag-and-drop operations."""
+        index = self.page_listbox.nearest(event.y)
+        if 0 <= index < len(self.pages):
+            self._drag_start_index = index
+            self.page_listbox.selection_clear(0, tk.END)
+            self.page_listbox.selection_set(index)
+
+    def _on_drag_motion(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+        """Handle drag motion to reorder pages."""
+        if self._drag_start_index is None:
+            return
+
+        target_index = self.page_listbox.nearest(event.y)
+        if (
+            target_index == self._drag_start_index
+            or target_index < 0
+            or target_index >= len(self.pages)
+        ):
+            return
+
+        self.pages[self._drag_start_index], self.pages[target_index] = (
+            self.pages[target_index],
+            self.pages[self._drag_start_index],
+        )
+        self._drag_start_index = target_index
+        self._refresh_page_list(select_index=target_index)
+
+    def _end_drag(self, event: tk.Event) -> None:  # type: ignore[type-arg]
+        """End drag operation."""
+        self._drag_start_index = None
 
     def _clear_files(self) -> None:
-        """Clear all files from the list."""
-        self.file_listbox.delete(0, tk.END)
-        self.pdf_files.clear()
+        """Clear all pages from the list."""
+        self.page_listbox.delete(0, tk.END)
+        self.pages.clear()
+        for reader in self._open_readers:
+            try:
+                reader.stream.close()  # type: ignore[union-attr]
+            except Exception:
+                pass
+        self._open_readers.clear()
+        self._drag_start_index = None
+        self._update_preview()
 
     def _move_up(self) -> None:
-        """Move selected file up in the list."""
-        selected = self.file_listbox.curselection()
+        """Move selected page up in the list."""
+        selected = self.page_listbox.curselection()
         if not selected or selected[0] == 0:
             return
 
         idx = selected[0]
         # Swap in the list
-        self.pdf_files[idx], self.pdf_files[idx - 1] = self.pdf_files[idx - 1], self.pdf_files[idx]
+        self.pages[idx], self.pages[idx - 1] = self.pages[idx - 1], self.pages[idx]
 
         # Update listbox
-        text = self.file_listbox.get(idx)
-        self.file_listbox.delete(idx)
-        self.file_listbox.insert(idx - 1, text)
-        self.file_listbox.selection_set(idx - 1)
+        self._refresh_page_list(select_index=idx - 1)
 
     def _move_down(self) -> None:
-        """Move selected file down in the list."""
-        selected = self.file_listbox.curselection()
-        if not selected or selected[0] == len(self.pdf_files) - 1:
+        """Move selected page down in the list."""
+        selected = self.page_listbox.curselection()
+        if not selected or selected[0] == len(self.pages) - 1:
             return
 
         idx = selected[0]
         # Swap in the list
-        self.pdf_files[idx], self.pdf_files[idx + 1] = self.pdf_files[idx + 1], self.pdf_files[idx]
+        self.pages[idx], self.pages[idx + 1] = self.pages[idx + 1], self.pages[idx]
 
         # Update listbox
-        text = self.file_listbox.get(idx)
-        self.file_listbox.delete(idx)
-        self.file_listbox.insert(idx + 1, text)
-        self.file_listbox.selection_set(idx + 1)
+        self._refresh_page_list(select_index=idx + 1)
 
     def _combine_pdfs(self) -> None:
-        """Combine all PDFs in the list."""
-        if not self.pdf_files:
-            messagebox.showwarning("No Files", "Please add some PDF files first!")
-            return
-
-        if len(self.pdf_files) < 2:
-            messagebox.showwarning(
-                "Not Enough Files", "Please add at least 2 PDF files to combine!"
-            )
+        """Combine all pages in the list."""
+        if not self.pages:
+            messagebox.showwarning("No Pages", "Please add PDF files so we can import pages!")
             return
 
         # Ask for output file
@@ -392,9 +516,9 @@ class BuckUtilsApp:
             return
 
         # Combine PDFs
-        if self.combiner.combine(self.pdf_files, output_file):
+        if self.combiner.combine_pages(self.pages, output_file):
             messagebox.showinfo(
-                "Success! ✅", f"PDFs combined successfully!\n\nSaved to:\n{output_file}"
+                "Success! ✅", f"PDF pages combined successfully!\n\nSaved to:\n{output_file}"
             )
 
             # Ask if user wants to open the folder
@@ -408,74 +532,6 @@ class BuckUtilsApp:
                     subprocess.run(["open", folder], check=False)
                 else:
                     subprocess.run(["xdg-open", folder], check=False)
-
-    # ========== Rename Tab Methods ==========
-
-    def _browse_rename_file(self) -> None:
-        """Browse for a file to rename."""
-        file = filedialog.askopenfilename(
-            title="Select PDF File to Rename",
-            filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")],
-        )
-
-        if file:
-            self.current_file_var.set(file)
-            # Pre-fill the new name with current name (without extension)
-            basename = Path(file).stem
-            self.new_name_var.set(basename)
-
-    def _rename_file(self) -> None:
-        """Rename the selected file."""
-        current_file = self.current_file_var.get()
-        new_name = self.new_name_var.get().strip()
-
-        if not current_file:
-            messagebox.showwarning("No File", "Please select a PDF file first!")
-            return
-
-        if not new_name:
-            messagebox.showwarning("No Name", "Please enter a new name for the file!")
-            return
-
-        current_file_path = Path(current_file)
-        if not current_file_path.exists():
-            messagebox.showerror("File Not Found", "The selected file no longer exists!")
-            return
-
-        # Sanitize filename - remove invalid characters
-        invalid_chars = '<>:"/\\|?*'
-        for char in invalid_chars:
-            new_name = new_name.replace(char, "_")
-
-        # Create new path
-        new_path = current_file_path.parent / f"{new_name}.pdf"
-
-        # Check if target already exists
-        if (
-            new_path.exists()
-            and str(new_path) != current_file
-            and not messagebox.askyesno(
-                "File Exists",
-                f"A file named '{new_name}.pdf' already exists.\n\nDo you want to replace it?",
-            )
-        ):
-            return
-
-        try:
-            current_file_path.rename(new_path)
-            messagebox.showinfo(
-                "Success! ✅", f"File renamed successfully!\n\nNew name:\n{new_name}.pdf"
-            )
-
-            # Update the UI
-            self.current_file_var.set(str(new_path))
-
-        except PermissionError:
-            messagebox.showerror(
-                "Permission Denied", "Cannot rename the file. It may be open in another program."
-            )
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to rename file: {e!s}")
 
 
 def main() -> None:
