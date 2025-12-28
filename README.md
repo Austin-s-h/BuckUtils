@@ -1,6 +1,6 @@
 # BuckUtils 🔧
 
-A simple, grandpa-friendly PDF utility for Windows. Easily combine and rename PDF files with a clean, easy-to-use interface.
+A simple, grandpa-friendly PDF utility for Windows. Easily combine PDF files with per-page control and a clean, easy-to-use interface.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows-green.svg)
@@ -9,7 +9,7 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine and rename PD
 ## Features ✨
 
 - **📄 Combine PDFs** - Merge multiple PDF files into a single document
-- **✏️ Rename PDFs** - Easily rename PDF files with a simple interface
+- **🧩 Page Previews & Reordering** - Import every page, preview text, and drag-and-drop pages across files
 - **🖥️ Clean UI** - Large buttons and clear text, designed for ease of use
 - **📦 Minimal Dependencies** - Works with just Python and pypdf
 
@@ -41,18 +41,11 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine and rename PD
 
 1. Click the **"Combine PDFs"** tab
 2. Click **"+ Add PDF Files"** to select your PDF files
-3. Use **"⬆️ Move Up"** and **"⬇️ Move Down"** to arrange the order
-4. Click **"🔗 COMBINE PDFs"**
-5. Choose where to save your combined PDF
-6. Done! ✅
-
-### Renaming PDFs
-
-1. Click the **"Rename PDF"** tab
-2. Click **"📂 Browse for PDF..."** to select a file
-3. Type the new name in the text box
-4. Click **"✏️ RENAME FILE"**
-5. Done! ✅
+3. Drag and drop pages (or use **"⬆️ Move Up"** / **"⬇️ Move Down"**) to arrange any page across any file
+4. Review the page preview text
+5. Click **"🔗 COMBINE PDFs"**
+6. Choose where to save your combined PDF
+7. Done! ✅
 
 ## Building the Windows Executable 🛠️
 

@@ -5,10 +5,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pypdf import PdfReader, PdfWriter
 
 # Mock tkinter for headless testing
 with patch.dict("sys.modules", {"tkinter": MagicMock(), "tkinter.ttk": MagicMock()}):
-    from buckutils.app import PDFCombiner
+    from buckutils.app import PDFCombiner, PDFPage
 
 
 class TestPDFCombiner:
@@ -76,6 +77,40 @@ startxref
             assert result is True
             assert output.exists()
             assert output.stat().st_size > 0
+
+    def test_combine_pages_preserves_order(self) -> None:
+        """Test that combining pages respects the provided order."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pdf1 = Path(tmpdir) / "ordered1.pdf"
+            pdf2 = Path(tmpdir) / "ordered2.pdf"
+            output = Path(tmpdir) / "combined_pages.pdf"
+
+            writer1 = PdfWriter()
+            writer1.add_blank_page(width=100, height=150)
+            with pdf1.open("wb") as f:
+                writer1.write(f)
+
+            writer2 = PdfWriter()
+            writer2.add_blank_page(width=200, height=150)
+            with pdf2.open("wb") as f:
+                writer2.write(f)
+
+            reader1 = PdfReader(str(pdf1))
+            reader2 = PdfReader(str(pdf2))
+
+            pages = [
+                PDFPage(str(pdf1), 0, "p1", reader1.pages[0], "preview1"),
+                PDFPage(str(pdf2), 0, "p2", reader2.pages[0], "preview2"),
+            ]
+
+            combiner = PDFCombiner()
+            with patch("tkinter.messagebox.showwarning"), patch("tkinter.messagebox.showerror"):
+                assert combiner.combine_pages(pages, str(output))
+
+            result_reader = PdfReader(str(output))
+            assert len(result_reader.pages) == 2
+            assert result_reader.pages[0].mediabox.width == reader1.pages[0].mediabox.width
+            assert result_reader.pages[1].mediabox.width == reader2.pages[0].mediabox.width
 
 
 class TestImports:
