@@ -1,0 +1,41 @@
+# Build artifacts
+build/
+dist/
+*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Type checking and linting caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
