@@ -11,7 +11,7 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine and rename PD
 - **📄 Combine PDFs** - Merge multiple PDF files into a single document
 - **✏️ Rename PDFs** - Easily rename PDF files with a simple interface
 - **🖥️ Clean UI** - Large buttons and clear text, designed for ease of use
-- **📦 Minimal Dependencies** - Works with just Python and PyPDF2
+- **📦 Minimal Dependencies** - Works with just Python and pypdf
 
 ## Quick Start 🚀
 
@@ -25,14 +25,14 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine and rename PD
 1. **Install Python 3.8+** from [python.org](https://www.python.org/downloads/)
    - ✅ Check "Add Python to PATH" during installation
 
-2. **Install dependencies:**
+2. **Install the package:**
    ```bash
-   pip install -r requirements.txt
+   pip install .
    ```
 
 3. **Run the application:**
    ```bash
-   python src/buckutils.py
+   python -m buckutils
    ```
 
 ## How to Use 📖
@@ -40,7 +40,7 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine and rename PD
 ### Combining PDFs
 
 1. Click the **"Combine PDFs"** tab
-2. Click **"➕ Add PDF Files"** to select your PDF files
+2. Click **"+ Add PDF Files"** to select your PDF files
 3. Use **"⬆️ Move Up"** and **"⬇️ Move Down"** to arrange the order
 4. Click **"🔗 COMBINE PDFs"**
 5. Choose where to save your combined PDF
@@ -58,12 +58,17 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine and rename PD
 
 To create a standalone `.exe` file that can run on any Windows computer:
 
-1. **Install PyInstaller:**
+1. **Install development dependencies:**
    ```bash
-   pip install pyinstaller
+   pip install ".[dev]"
    ```
 
 2. **Build the executable:**
+   ```bash
+   make build
+   ```
+   
+   Or manually:
    ```bash
    pyinstaller buckutils.spec
    ```
@@ -77,10 +82,34 @@ BuckUtils can work with two different PDF backends:
 
 | Backend | Installation | Notes |
 |---------|-------------|-------|
-| **PyPDF2** (Recommended) | `pip install PyPDF2` | Fast, pure Python, no external dependencies |
-| **Ghostscript** | [Download](https://ghostscript.com) | Fallback option if PyPDF2 isn't available |
+| **pypdf** (Recommended) | `pip install pypdf` | Fast, pure Python, no external dependencies |
+| **Ghostscript** | [Download](https://ghostscript.com) | Fallback option if pypdf isn't available |
 
 The app automatically detects which backend is available and uses it.
+
+## Development
+
+This project uses modern Python tooling:
+
+```bash
+# Install development dependencies
+make dev
+
+# Run linter
+make lint
+
+# Run type checker
+make typecheck
+
+# Run tests
+make test
+
+# Build executable
+make build
+
+# Full deploy (lint, typecheck, test, build)
+make deploy
+```
 
 ## System Requirements 💻
 
@@ -91,16 +120,16 @@ The app automatically detects which backend is available and uses it.
 ## Troubleshooting 🔧
 
 ### "No PDF library found" error
-Install PyPDF2:
+Install pypdf:
 ```bash
-pip install PyPDF2
+pip install pypdf
 ```
 
 ### The app won't start
 - Make sure Python is installed and in your PATH
 - Try running from command line to see error messages:
   ```bash
-  python src/buckutils.py
+  python -m buckutils
   ```
 
 ### Permission denied when renaming

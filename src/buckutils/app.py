@@ -4,6 +4,7 @@ BuckUtils - A simple PDF utility for combining and renaming PDF files.
 Designed to be grandpa-friendly with a clear, easy-to-use interface.
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -36,8 +37,6 @@ class PDFCombiner:
                 return name
 
         # Check common Windows installation paths
-        import os
-
         program_files = [
             os.environ.get("PROGRAMFILES", "C:\\Program Files"),
             os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)"),
@@ -404,8 +403,6 @@ class BuckUtilsApp:
             ):
                 folder = str(Path(output_file).parent)
                 if sys.platform == "win32":
-                    import os
-
                     os.startfile(folder)
                 elif sys.platform == "darwin":
                     subprocess.run(["open", folder], check=False)
