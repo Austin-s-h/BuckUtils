@@ -1,6 +1,6 @@
 # BuckUtils 🔧
 
-A simple, grandpa-friendly PDF utility for Windows. Easily combine PDF files with per-page control and a clean, easy-to-use interface.
+A simple, grandpa-friendly PDF utility for Windows. Easily combine PDF files with per-page control and a clean, easy-to-use Streamlit interface.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows-green.svg)
@@ -9,43 +9,35 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine PDF files wit
 ## Features ✨
 
 - **📄 Combine PDFs** - Merge multiple PDF files into a single document
-- **🧩 Page Previews & Reordering** - Import every page, preview text, and drag-and-drop pages across files
-- **🖥️ Clean UI** - Large buttons and clear text, designed for ease of use
-- **📦 Minimal Dependencies** - Works with just Python and pypdf
+- **🧩 Page Previews & Reordering** - Import every page, see live text/image previews, and reorder with simple buttons
+- **🖥️ Streamlit UI** - Web-based interface that stays responsive without extra pop-up windows
+- **📦 Packaging-friendly** - Built to run locally or bundle with PyInstaller
 
 ## Quick Start 🚀
 
-### Option 1: Run the Windows Executable (Easiest)
-
-1. Download `BuckUtils.exe` from the [Releases](../../releases) page
-2. Double-click to run - no installation needed!
-
-### Option 2: Run from Source
+### Option 1: Run from Source (recommended)
 
 1. **Install Python 3.8+** from [python.org](https://www.python.org/downloads/)
-   - ✅ Check "Add Python to PATH" during installation
-
 2. **Install the package:**
    ```bash
    pip install .
    ```
-
-3. **Run the application:**
+3. **Run the application (opens Streamlit in your browser):**
    ```bash
    python -m buckutils
    ```
 
+### Option 2: Build a Windows Executable
+
+1. **Install Python 3.8+** from [python.org](https://www.python.org/downloads/)
+   - ✅ Check "Add Python to PATH" during installation
+
 ## How to Use 📖
 
-### Combining PDFs
-
-1. Click the **"Combine PDFs"** tab
-2. Click **"+ Add PDF Files"** to select your PDF files
-3. Drag and drop pages (or use **"⬆️ Move Up"** / **"⬇️ Move Down"**) to arrange any page across any file
-4. Review the page preview text
-5. Click **"🔗 COMBINE PDFs"**
-6. Choose where to save your combined PDF
-7. Done! ✅
+1. Click **"Upload one or more PDFs"** to add files.
+2. Use **Move Up/Move Down** to reorder pages across files.
+3. Review the live image and text preview on the right.
+4. Click **Generate PDF** and then **Download combined PDF**.
 
 ## Building the Windows Executable 🛠️
 
@@ -69,16 +61,9 @@ To create a standalone `.exe` file that can run on any Windows computer:
 3. **Find your executable:**
    The `BuckUtils.exe` file will be in the `dist/` folder
 
-## PDF Backend Options
+## PDF Backend
 
-BuckUtils can work with two different PDF backends:
-
-| Backend | Installation | Notes |
-|---------|-------------|-------|
-| **pypdf** (Recommended) | `pip install pypdf` | Fast, pure Python, no external dependencies |
-| **Ghostscript** | [Download](https://ghostscript.com) | Fallback option if pypdf isn't available |
-
-The app automatically detects which backend is available and uses it.
+BuckUtils now uses **pypdf** for combining and **pypdfium2** for page previews. Both are bundled when you install the project or build the executable.
 
 ## Development
 

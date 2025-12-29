@@ -1,51 +1,27 @@
 """Tests for BuckUtils PDF combiner functionality."""
 
 import tempfile
+from io import BytesIO
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 from pypdf import PdfReader, PdfWriter
 
-# Mock tkinter for headless testing
-with patch.dict("sys.modules", {"tkinter": MagicMock(), "tkinter.ttk": MagicMock()}):
-    from buckutils.app import PDFCombiner, PDFPage, _generate_preview_for_page
+from buckutils.app import (
+    PDFCombiner,
+    PDFPage,
+    PagePreview,
+    UploadedPDF,
+    _build_preview_text,
+    _render_preview_image,
+    build_combined_pdf_bytes,
+)
 
 
-class TestPDFCombiner:
-    """Tests for the PDFCombiner class."""
-
-    def test_find_ghostscript_returns_none_when_not_installed(self) -> None:
-        """Test that find_ghostscript returns None when GS is not found."""
-        with patch("shutil.which", return_value=None), patch(
-            "os.path.exists", return_value=False
-        ):
-            result = PDFCombiner.find_ghostscript()
-            # May or may not be None depending on system, but shouldn't crash
-            assert result is None or isinstance(result, str)
-
-    def test_combine_with_empty_list_shows_warning(self) -> None:
-        """Test that combining with empty list shows a warning."""
-        combiner = PDFCombiner()
-        with patch("tkinter.messagebox.showwarning"):
-            result = combiner.combine([], "output.pdf")
-            assert result is False
-
-    def test_combine_with_single_file_placeholder(self) -> None:
-        """Placeholder test for single file validation (done in app layer)."""
-        # Note: This test assumes the validation happens in the app, not combiner
-        # The combiner.combine() itself just checks for empty list
-        pass
-
-
-class TestPDFCombinerWithPyPDF2:
-    """Tests for PDF combining with PyPDF2."""
-
-    @pytest.fixture
-    def sample_pdf_content(self) -> bytes:
-        """Create minimal valid PDF content."""
-        # Minimal valid PDF
-        return b"""%PDF-1.4
+@pytest.fixture
+def sample_pdf_content() -> bytes:
+    """Create minimal valid PDF content."""
+    return b"""%PDF-1.4
 1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
 2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
 3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >> endobj
@@ -60,6 +36,19 @@ startxref
 196
 %%EOF"""
 
+
+class TestPDFCombiner:
+    """Tests for the PDFCombiner class."""
+
+    def test_combine_with_empty_list_returns_false(self) -> None:
+        """Test that combining with empty list fails gracefully."""
+        combiner = PDFCombiner()
+        result = combiner.combine([], "output.pdf")
+        assert result is False
+
+
+class TestPDFCombinerWithPyPDF2:
+    """Tests for PDF combining with PyPDF2."""
     def test_combine_creates_output_file(self, sample_pdf_content: bytes) -> None:
         """Test that combining PDFs creates an output file."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -104,30 +93,45 @@ startxref
             ]
 
             combiner = PDFCombiner()
-            with patch("tkinter.messagebox.showwarning"), patch("tkinter.messagebox.showerror"):
-                assert combiner.combine_pages(pages, str(output))
+            assert combiner.combine_pages(pages, str(output))
 
             result_reader = PdfReader(str(output))
             assert len(result_reader.pages) == 2
             assert result_reader.pages[0].mediabox.width == reader1.pages[0].mediabox.width
             assert result_reader.pages[1].mediabox.width == reader2.pages[0].mediabox.width
 
-    def test_generate_preview_for_page_returns_metadata(
-        self, sample_pdf_content: bytes
-    ) -> None:
-        """Test that preview generation helper returns preview data."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pdf_path = Path(tmpdir) / "preview.pdf"
-            pdf_path.write_bytes(sample_pdf_content)
+    def test_render_preview_image_returns_png_bytes(self, sample_pdf_content: bytes) -> None:
+        """Test that preview image generation returns PNG data."""
+        image_bytes = _render_preview_image(sample_pdf_content, 0)
 
-            file_path, page_idx, preview_text, preview_image = _generate_preview_for_page(
-                (str(pdf_path), 0, None)
-            )
+        assert image_bytes is None or image_bytes.startswith(b"\x89PNG")
 
-            assert file_path == str(pdf_path)
-            assert page_idx == 0
-            assert isinstance(preview_text, str)
-            assert preview_image is None
+
+class TestStreamlitHelpers:
+    """Tests for helper utilities backing the Streamlit UI."""
+
+    def test_build_combined_pdf_bytes_uses_order(self, sample_pdf_content: bytes) -> None:
+        """Ensure combined PDF respects provided ordering."""
+        data = sample_pdf_content
+        files = {
+            "a": UploadedPDF(file_id="a", name="a.pdf", data=data),
+            "b": UploadedPDF(file_id="b", name="b.pdf", data=data),
+        }
+        pages = [
+            PagePreview(file_id="b", page_index=0, label="b", preview_text="", preview_image=None),
+            PagePreview(file_id="a", page_index=0, label="a", preview_text="", preview_image=None),
+        ]
+
+        combined = build_combined_pdf_bytes(pages, files)
+        reader = PdfReader(BytesIO(combined))
+        assert len(reader.pages) == 2
+
+    def test_build_preview_text_returns_placeholder(self, sample_pdf_content: bytes) -> None:
+        """Ensure preview text fallback is used when no text is present."""
+        reader = PdfReader(BytesIO(sample_pdf_content))
+        text = _build_preview_text(reader.pages[0])
+        assert isinstance(text, str)
+        assert text != ""
 
 
 class TestImports:

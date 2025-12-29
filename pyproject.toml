@@ -32,6 +32,9 @@ classifiers = [
 
 dependencies = [
     "pypdf>=4.0.0",
+    "pypdfium2>=4.30.0",
+    "pillow>=10.0.0",
+    "streamlit>=1.40.0",
 ]
 
 [project.optional-dependencies]
