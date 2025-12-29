@@ -102,13 +102,9 @@ class TestPDFCombinerWithPyPDF2:
 
     def test_render_preview_image_returns_png_bytes(self, sample_pdf_content: bytes) -> None:
         """Test that preview image generation returns PNG data."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pdf_path = Path(tmpdir) / "preview.pdf"
-            pdf_path.write_bytes(sample_pdf_content)
+        image_bytes = _render_preview_image(sample_pdf_content, 0)
 
-            image_bytes = _render_preview_image(pdf_path.read_bytes(), 0)
-
-            assert image_bytes is None or image_bytes.startswith(b"\x89PNG")
+        assert image_bytes is None or image_bytes.startswith(b"\x89PNG")
 
 
 class TestStreamlitHelpers:

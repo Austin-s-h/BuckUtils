@@ -114,28 +114,22 @@ def _render_preview_image(pdf_bytes: bytes, page_index: int, scale: float = 0.4)
     pdf = pdfium.PdfDocument(pdf_bytes)
     try:
         page_count = len(pdf)
-    except Exception:
-        pdf.close()
-        return None
-    if page_index < 0 or page_index >= page_count:
-        pdf.close()
-        return None
-    try:
+        if page_index < 0 or page_index >= page_count:
+            return None
+
         page_handle = pdf.get_page(page_index)
-    except Exception:
-        pdf.close()
-        return None
-    try:
-        bitmap = page_handle.render(scale=scale)
-        pil_image = bitmap.to_pil()
-        buffer = BytesIO()
-        pil_image.save(buffer, format="PNG")
-        buffer.seek(0)
-        return buffer.read()
+        try:
+            bitmap = page_handle.render(scale=scale)
+            pil_image = bitmap.to_pil()
+            buffer = BytesIO()
+            pil_image.save(buffer, format="PNG")
+            buffer.seek(0)
+            return buffer.read()
+        finally:
+            page_handle.close()
     except Exception:
         return None
     finally:
-        page_handle.close()
         pdf.close()
 
 
@@ -193,7 +187,7 @@ def build_combined_pdf_bytes(pages: list[PagePreview], files: Dict[str, Uploaded
     for page in pages:
         file_entry = files.get(page.file_id)
         if not file_entry:
-            raise KeyError("PDF file data not found")
+            raise KeyError(f"PDF file data not found for '{page.file_id}'")
         reader = PdfReader(BytesIO(file_entry.data))
         writer.add_page(reader.pages[page.page_index])
 
