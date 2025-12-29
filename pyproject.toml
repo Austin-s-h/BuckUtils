@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A simple, grandpa-friendly PDF utility for combining and renaming PDF files"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 authors = [
     { name = "Austin", email = "austin@example.com" }
 ]
@@ -21,7 +21,6 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -43,6 +42,7 @@ dev = [
     "mypy>=1.0.0",
     "pytest>=7.0.0",
     "pyinstaller>=5.0",
+    "streamlit-desktop-app>=0.3.4",
 ]
 
 [project.scripts]
@@ -70,7 +70,7 @@ include = [
 # Ruff Configuration
 # ============================================================================
 [tool.ruff]
-target-version = "py38"
+target-version = "py39"
 line-length = 100
 src = ["src"]
 
