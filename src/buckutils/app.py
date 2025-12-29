@@ -120,7 +120,11 @@ def _render_preview_image(pdf_bytes: bytes, page_index: int, scale: float = 0.4)
     if page_index < 0 or page_index >= page_count:
         pdf.close()
         return None
-    page_handle = pdf.get_page(page_index)
+    try:
+        page_handle = pdf.get_page(page_index)
+    except Exception:
+        pdf.close()
+        return None
     try:
         bitmap = page_handle.render(scale=scale)
         pil_image = bitmap.to_pil()
@@ -189,7 +193,7 @@ def build_combined_pdf_bytes(pages: list[PagePreview], files: Dict[str, Uploaded
     for page in pages:
         file_entry = files.get(page.file_id)
         if not file_entry:
-            raise KeyError(f"Missing PDF data for file id '{page.file_id}'")
+            raise KeyError("PDF file data not found")
         reader = PdfReader(BytesIO(file_entry.data))
         writer.add_page(reader.pages[page.page_index])
 
@@ -299,8 +303,8 @@ def main() -> None:
         if st.runtime.exists():
             render_app()
             return
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"Streamlit runtime check failed: {exc}", file=sys.stderr)
 
     from streamlit.web import bootstrap
 
