@@ -11,7 +11,7 @@ help:
 	@echo "  make format     - Format code with ruff"
 	@echo "  make typecheck  - Run mypy type checker"
 	@echo "  make test       - Run tests"
-	@echo "  make build      - Build Windows executable"
+	@echo "  make build      - Build desktop executable with streamlit-desktop-app"
 	@echo "  make clean      - Clean build artifacts"
 	@echo "  make deploy     - Build and prepare for distribution"
 	@echo "  make all        - Run lint, typecheck, test, and build"
@@ -41,9 +41,9 @@ typecheck:
 test:
 	uv run pytest tests/ -v
 
-# Build Windows executable with PyInstaller
+# Build Windows executable with streamlit-desktop-app (PyInstaller under the hood)
 build:
-	uv run pyinstaller buckutils.spec --clean
+	uv run streamlit-desktop-app build src/buckutils/app.py --name BuckUtils --pyinstaller-options --onefile --noconfirm --distpath dist --workpath build
 
 # Clean build artifacts
 clean:

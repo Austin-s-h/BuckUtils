@@ -2,7 +2,7 @@
 
 A simple, grandpa-friendly PDF utility for Windows. Easily combine PDF files with per-page control and a clean, easy-to-use Streamlit interface.
 
-![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
+![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows-green.svg)
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 
@@ -17,7 +17,7 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine PDF files wit
 
 ### Option 1: Run from Source (recommended)
 
-1. **Install Python 3.8+** from [python.org](https://www.python.org/downloads/)
+1. **Install Python 3.9+** from [python.org](https://www.python.org/downloads/)
 2. **Install the package:**
    ```bash
    pip install .
@@ -29,7 +29,7 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine PDF files wit
 
 ### Option 2: Build a Windows Executable
 
-1. **Install Python 3.8+** from [python.org](https://www.python.org/downloads/)
+1. **Install Python 3.9+** from [python.org](https://www.python.org/downloads/)
    - ✅ Check "Add Python to PATH" during installation
 
 ## How to Use 📖
@@ -43,23 +43,23 @@ A simple, grandpa-friendly PDF utility for Windows. Easily combine PDF files wit
 
 To create a standalone `.exe` file that can run on any Windows computer:
 
-1. **Install development dependencies:**
+1. **Install development dependencies (includes `streamlit-desktop-app` for packaging):**
    ```bash
    pip install ".[dev]"
    ```
 
-2. **Build the executable:**
+2. **Build the executable (uses `streamlit-desktop-app` + PyInstaller under the hood):**
    ```bash
    make build
    ```
    
    Or manually:
    ```bash
-   pyinstaller buckutils.spec
+   streamlit-desktop-app build src/buckutils/app.py --name BuckUtils --pyinstaller-options --onefile --noconfirm --distpath dist --workpath build
    ```
 
 3. **Find your executable:**
-   The `BuckUtils.exe` file will be in the `dist/` folder
+   The `BuckUtils.exe` file will be in the `dist/` folder. The CI workflow also uploads this executable as a build artifact after every run.
 
 ## PDF Backend
 
@@ -82,7 +82,7 @@ make typecheck
 # Run tests
 make test
 
-# Build executable
+# Build executable (Streamlit Desktop App + PyInstaller)
 make build
 
 # Full deploy (lint, typecheck, test, build)
@@ -92,7 +92,7 @@ make deploy
 ## System Requirements 💻
 
 - **Windows 7/8/10/11**
-- **Python 3.8+** (if running from source)
+- **Python 3.9+** (if running from source)
 - **~50 MB disk space** for the executable
 
 ## Troubleshooting 🔧
