@@ -112,7 +112,12 @@ def _build_preview_text(page: "PageObject") -> str:
 def _render_preview_image(pdf_bytes: bytes, page_index: int, scale: float = 0.4) -> Optional[bytes]:
     """Render a preview image for a PDF page using pypdfium2."""
     pdf = pdfium.PdfDocument(pdf_bytes)
-    if page_index < 0 or page_index >= len(pdf):
+    try:
+        page_count = len(pdf)
+    except Exception:
+        pdf.close()
+        return None
+    if page_index < 0 or page_index >= page_count:
         pdf.close()
         return None
     page_handle = pdf.get_page(page_index)
@@ -290,9 +295,12 @@ def render_app() -> None:
 
 def main() -> None:
     """Launch the Streamlit server when executed directly."""
-    if st.runtime.exists():
-        render_app()
-        return
+    try:
+        if st.runtime.exists():
+            render_app()
+            return
+    except Exception:
+        pass
 
     from streamlit.web import bootstrap
 
