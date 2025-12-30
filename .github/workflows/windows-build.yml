@@ -32,7 +32,7 @@ jobs:
         run: python -m pytest tests/ -v
 
       - name: Build Windows desktop executable
-        run: uv run streamlit-desktop-app build src/buckutils/app.py --name BuckUtils --pyinstaller-options --onefile --noconfirm --distpath dist --workpath build
+        run: uv run streamlit-desktop-app build src/buckutils/app.py --name BuckUtils --pyinstaller-options --onefile --noconfirm --hidden-import pypdf --distpath dist --workpath build
 
       - name: Upload Windows distributable
         uses: actions/upload-artifact@v4
