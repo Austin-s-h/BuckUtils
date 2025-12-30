@@ -43,7 +43,7 @@ test:
 
 # Build Windows executable with streamlit-desktop-app (PyInstaller under the hood)
 build:
-	uv run streamlit-desktop-app build src/buckutils/app.py --name BuckUtils --pyinstaller-options --onefile --noconfirm --distpath dist --workpath build
+	uv run streamlit-desktop-app build src/buckutils/app.py --name BuckUtils --pyinstaller-options --onefile --noconfirm --hidden-import pypdf --distpath dist --workpath build
 
 # Clean build artifacts
 clean:

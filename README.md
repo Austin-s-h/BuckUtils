@@ -55,7 +55,7 @@ To create a standalone `.exe` file that can run on any Windows computer:
    
    Or manually:
    ```bash
-   streamlit-desktop-app build src/buckutils/app.py --name BuckUtils --pyinstaller-options --onefile --noconfirm --distpath dist --workpath build
+   streamlit-desktop-app build src/buckutils/app.py --name BuckUtils --pyinstaller-options --onefile --noconfirm --hidden-import pypdf --distpath dist --workpath build
    ```
 
 3. **Find your executable:**
