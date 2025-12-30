@@ -5,6 +5,7 @@ BuckUtils - Streamlit PDF helper with page-level previews and ordering.
 
 from __future__ import annotations
 
+import base64
 import sys
 from dataclasses import dataclass
 from io import BytesIO
@@ -15,6 +16,7 @@ from uuid import uuid4
 import pypdfium2 as pdfium
 import streamlit as st
 from pypdf import PdfReader, PdfWriter
+from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 if TYPE_CHECKING:  # pragma: no cover - used for type checking only
     from pypdf import PageObject
@@ -236,7 +238,11 @@ def _render_order_controls() -> None:
         selected_page = pages[st.session_state["selected_index"]]
         st.subheader(selected_page.label)
         if selected_page.preview_image:
-            st.image(selected_page.preview_image, caption="Page preview", use_column_width=True)
+            image_data = selected_page.preview_image
+            if isinstance(image_data, bytes):
+                encoded = base64.b64encode(image_data).decode("ascii")
+                image_data = f"data:image/png;base64,{encoded}"
+            st.image(image_data, caption="Page preview", use_container_width=True)
         st.text_area(
             "Text preview",
             selected_page.preview_text,
@@ -294,7 +300,7 @@ def render_app() -> None:
 def main() -> None:
     """Launch the Streamlit server when executed directly."""
     try:
-        if st.runtime.exists():
+        if get_script_run_ctx() is not None:
             render_app()
             return
     except Exception as exc:
