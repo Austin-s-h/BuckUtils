@@ -8,9 +8,9 @@ import pytest
 from pypdf import PdfReader, PdfWriter
 
 from buckutils.app import (
+    PagePreview,
     PDFCombiner,
     PDFPage,
-    PagePreview,
     UploadedPDF,
     _build_preview_text,
     _render_preview_image,
@@ -49,6 +49,7 @@ class TestPDFCombiner:
 
 class TestPDFCombinerWithPyPDF2:
     """Tests for PDF combining with PyPDF2."""
+
     def test_combine_creates_output_file(self, sample_pdf_content: bytes) -> None:
         """Test that combining PDFs creates an output file."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -123,7 +124,7 @@ class TestStreamlitHelpers:
         ]
 
         combined = build_combined_pdf_bytes(pages, files)
-        reader = PdfReader(BytesIO(combined))
+        reader = PdfReader(combined)
         assert len(reader.pages) == 2
 
     def test_build_preview_text_returns_placeholder(self, sample_pdf_content: bytes) -> None:

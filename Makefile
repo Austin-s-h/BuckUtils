@@ -31,7 +31,7 @@ lint:
 # Format code with ruff
 format:
 	uv run ruff format src/ tests/
-	uv run ruff check --fix src/ tests/
+	uv run ruff check --fix --unsafe-fixes src/ tests/
 
 # Run mypy type checker
 typecheck:

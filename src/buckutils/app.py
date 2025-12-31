@@ -10,7 +10,7 @@ import sys
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pypdfium2 as pdfium
@@ -29,9 +29,9 @@ class PDFPage:
     source_path: str
     page_index: int
     label: str
-    page: "PageObject"
+    page: PageObject
     preview: str
-    preview_image_path: Optional[str] = None
+    preview_image_path: str | None = None
 
 
 @dataclass
@@ -51,7 +51,7 @@ class PagePreview:
     page_index: int
     label: str
     preview_text: str
-    preview_image: Optional[bytes]
+    preview_image: bytes | None
 
 
 class PDFCombiner:
@@ -96,7 +96,7 @@ class PDFCombiner:
             return False
 
 
-def _build_preview_text(page: "PageObject") -> str:
+def _build_preview_text(page: PageObject) -> str:
     """Create a short text preview for a page."""
     text = ""
     try:
@@ -111,7 +111,7 @@ def _build_preview_text(page: "PageObject") -> str:
     return (cleaned[:240] + "…") if len(cleaned) > 240 else cleaned
 
 
-def _render_preview_image(pdf_bytes: bytes, page_index: int, scale: float = 0.4) -> Optional[bytes]:
+def _render_preview_image(pdf_bytes: bytes, page_index: int, scale: float = 0.4) -> bytes | None:
     """Render a preview image for a PDF page using pypdfium2."""
     pdf = pdfium.PdfDocument(pdf_bytes)
     try:
@@ -145,7 +145,7 @@ def _init_state() -> None:
 
 def _add_uploaded_files(uploaded_files: list) -> None:
     """Import uploaded PDFs into session state with previews."""
-    files: Dict[str, UploadedPDF] = st.session_state["files"]
+    files: dict[str, UploadedPDF] = st.session_state["files"]
     pages: list[PagePreview] = st.session_state["pages"]
 
     for uploaded in uploaded_files:
@@ -183,8 +183,8 @@ def _swap_pages(idx_a: int, idx_b: int) -> None:
     pages[idx_a], pages[idx_b] = pages[idx_b], pages[idx_a]
 
 
-def build_combined_pdf_bytes(pages: list[PagePreview], files: Dict[str, UploadedPDF]) -> bytes:
-    """Build a combined PDF from ordered previews."""
+def build_combined_pdf_bytes(pages: list[PagePreview], files: dict[str, UploadedPDF]) -> BytesIO:
+    """Build a combined PDF from ordered previews and return a BytesIO buffer."""
     writer = PdfWriter()
     for page in pages:
         file_entry = files.get(page.file_id)
@@ -196,7 +196,7 @@ def build_combined_pdf_bytes(pages: list[PagePreview], files: Dict[str, Uploaded
     buffer = BytesIO()
     writer.write(buffer)
     buffer.seek(0)
-    return buffer.read()
+    return buffer
 
 
 def _render_order_controls() -> None:
@@ -206,9 +206,7 @@ def _render_order_controls() -> None:
         st.info("Add PDFs to see page previews and reorder them.")
         return
 
-    st.session_state["selected_index"] = min(
-        st.session_state.get("selected_index", 0), len(pages) - 1
-    )
+    st.session_state["selected_index"] = min(st.session_state.get("selected_index", 0), len(pages) - 1)
     selected_index = st.selectbox(
         "Select a page to preview & reorder",
         options=list(range(len(pages))),
@@ -263,9 +261,7 @@ def render_app() -> None:
     )
 
     with st.expander("Add PDF files", expanded=True):
-        uploaded_files = st.file_uploader(
-            "Upload one or more PDFs", type=["pdf"], accept_multiple_files=True
-        )
+        uploaded_files = st.file_uploader("Upload one or more PDFs", type=["pdf"], accept_multiple_files=True)
         if uploaded_files and st.button("Import selected files", type="primary"):
             _add_uploaded_files(uploaded_files)
             st.success("Pages imported. Adjust the order below.")
@@ -280,10 +276,11 @@ def render_app() -> None:
             default_name = "combined.pdf"
             output_name = st.text_input("Output filename", value=default_name)
             if st.button("Generate PDF", type="primary"):
-                st.session_state["combined_pdf"] = build_combined_pdf_bytes(
-                    pages, st.session_state["files"]
-                )
-                st.success("Combined PDF ready to download below.")
+                try:
+                    st.session_state["combined_pdf"] = build_combined_pdf_bytes(pages, st.session_state["files"])
+                    st.success("Combined PDF ready to download below.")
+                except Exception as e:
+                    st.error(f"Error generating PDF: {str(e)}")
 
             if st.session_state.get("combined_pdf"):
                 st.download_button(
